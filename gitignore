@@ -1,0 +1,61 @@
+# ============================
+# 🐍 Projet Python - Wakfu Tracker
+# ============================
+
+# --- Fichiers de configuration des classes ---
+*/positions_config.json
+test.py
+
+# --- Dossiers temporaires et caches Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Environnements virtuels ---
+venv/
+.env/
+.venv/
+
+# --- Fichiers de logs ---
+*.log
+logs/
+wakfu_chat.log
+
+# --- Fichiers temporaires / build ---
+build/
+dist/
+*.spec
+
+# --- Fichiers système inutiles ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Sauvegardes éditeurs ---
+*.bak
+*.swp
+*.swo
+
+# --- Paramètres d’IDE ---
+.vscode/
+.idea/
+
+# --- Fichiers JSON temporaires ou générés ---
+*.json
+
+# (sauf si tu veux garder certains configs manuellement)
+#!important_config.json
+
+# --- Ressources externes ---
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.zip
+
+# --- Exécutables compilés ---
+*.exe
+*.dll
+*.so
+*.dylib
