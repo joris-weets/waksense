@@ -190,7 +190,7 @@ class OutlinedLabel(QLabel):
             painter.setPen(QPen(resource_color, 1))
             painter.drawText(resource_x, y, resource_part)
 
-class ougigarouIcon(QLabel):
+class preyIcon(QLabel):
     """Custom tracker icon with fade animation support"""
 
     def __init__(self, parent=None):
@@ -465,9 +465,13 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.current_rage = 0
         self.current_tracker = 0
         self.current_prey = False
+        self.current_rage = 0
         
         # Préparation Damage Confirmation System
         self.pending_rage_loss = False  # True when waiting for damage confirmation
+        self.rage_loss_caster = None  # Player who cast spell that should remove rage
+        self.rage_loss_spell = None  # Spell that should remove rage
+        self.in_combat = False
         
         # Player tracking
         self.tracked_player_name = None  # Track the player we're monitoring
@@ -491,7 +495,7 @@ class WakfuOugiResourceTracker(QMainWindow):
         
         # Turn tracking
         self.last_spell_caster = None  # Track the last player who cast a spell
-        
+
         # Animation variables
         self.animation_frame = 0
         self.smooth_transitions = False  # Disable smooth transitions for more responsive updates
@@ -504,7 +508,7 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.tracker_bounce_min_velocity = 0.3  # Stop bouncing when velocity is very small
         self.tracker_ground_level = 0  # Ground level (normal position)
         
-        # Prey icon animation variables
+        # Égaré icon animation variables
         self.prey_fade_alpha = 0.0  # Current opacity (0.0 to 1.0)
         self.prey_target_alpha = 0.0  # Target opacity
         # Use separate speeds for fade-in and fade-out for better feel
@@ -649,18 +653,18 @@ class WakfuOugiResourceTracker(QMainWindow):
         main_widget.layout().setContentsMargins(0, 0, 0, 0)
         
         # rage icon (positioned absolutely)
-        self.ougigarou_icon = QLabel()
-        self.ougigarou_icon.setFixedSize(28, 28)
-        self.ougigarou_icon.setScaledContents(True)
-        self.ougigarou_icon.setParent(main_widget)
-
-        if self.ougigarou_icon_path.exists():
-            pixmap = QPixmap(str(self.ougigarou_icon_path))
-            self.ougigarou_icon.setPixmap(pixmap.scaled(28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            self.ougigarou_icon.setStyleSheet("background-color: transparent;")
+        self.rage_icon = QLabel()
+        self.rage_icon.setFixedSize(28, 28)
+        self.rage_icon.setScaledContents(True)
+        self.rage_icon.setParent(main_widget)
+        
+        if self.rage_icon_path.exists():
+            pixmap = QPixmap(str(self.rage_icon_path))
+            self.rage_icon.setPixmap(pixmap.scaled(28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.rage_icon.setStyleSheet("background-color: transparent;")
         else:
-            self.ougigarou_icon.setText("🐶")
-            self.ougigarou_icon.setStyleSheet("""
+            self.rage_icon.setText("🐶")
+            self.rage_icon.setStyleSheet("""
                 QLabel {
                     color: #64b5f6;
                     font-size: 20px;
@@ -672,14 +676,6 @@ class WakfuOugiResourceTracker(QMainWindow):
         # rage progress bar
         self.rage_bar = rageProgressBar()
         self.rage_bar.setParent(main_widget)
-        # Place the rage bar at the center of the screen by default (user requested)
-        try:
-            center_x = screen_geometry.x() + (screen_geometry.width() - self.rage_bar.width()) // 2
-            center_y = screen_geometry.y() + (screen_geometry.height() - self.rage_bar.height()) // 2
-            self.rage_bar.move(center_x, center_y)
-        except Exception:
-            # Fallback: leave at (0,0) if something goes wrong
-            pass
         
         # tracker icon (positioned absolutely, initially hidden)
         self.tracker_icon = QLabel()
@@ -711,19 +707,19 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.tracker_counter.hide()
         
         # Préparation icon (positioned absolutely, initially hidden)
-        self.ougigarou_icon = QLabel()
-        self.ougigarou_icon.setFixedSize(40, 40)
-        self.ougigarou_icon.setScaledContents(True)
-        self.ougigarou_icon.setParent(main_widget)
-        self.ougigarou_icon.hide()
-
-        if self.ougigarou_icon_path.exists():
-            pixmap = QPixmap(str(self.ougigarou_icon_path))
-            self.ougigarou_icon.setPixmap(pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            self.ougigarou_icon.setStyleSheet("background-color: transparent;")
+        self.rage_icon = QLabel()
+        self.rage_icon.setFixedSize(40, 40)
+        self.rage_icon.setScaledContents(True)
+        self.rage_icon.setParent(main_widget)
+        self.rage_icon.hide()
+        
+        if self.rage_icon_path.exists():
+            pixmap = QPixmap(str(self.rage_icon_path))
+            self.rage_icon.setPixmap(pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.rage_icon.setStyleSheet("background-color: transparent;")
         else:
-            self.ougigarou_icon.setText("📋")
-            self.ougigarou_icon.setStyleSheet("""
+            self.rage_icon.setText("📋")
+            self.rage_icon.setStyleSheet("""
                 QLabel {
                     color: #ff9800;
                     font-size: 28px;
@@ -755,21 +751,21 @@ class WakfuOugiResourceTracker(QMainWindow):
             bar.hide()
             self.tracker_bars.append(bar)
         
-        # ougigarou icon (positioned above first Tracker bar, initially hidden)
-        self.tracker_icon = ougigarouIcon()
-        self.tracker_icon.setFixedSize(24, 24)
-        self.tracker_icon.setScaledContents(True)
-        self.tracker_icon.setParent(main_widget)
-        self.tracker_icon.hide()
+        # prey icon (positioned above first combo bar, initially hidden)
+        self.prey_icon = preyIcon()
+        self.prey_icon.setFixedSize(24, 24)
+        self.prey_icon.setScaledContents(True)
+        self.prey_icon.setParent(main_widget)
+        self.prey_icon.hide()
         
-        if self.tracker_icon_path.exists():
-            pixmap = QPixmap(str(self.tracker_icon_path))
+        if self.prey_icon_path.exists():
+            pixmap = QPixmap(str(self.prey_icon_path))
             scaled_pixmap = pixmap.scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            self.tracker_icon.setPixmap(scaled_pixmap)
+            self.prey_icon.setPixmap(scaled_pixmap)
         else:
             # Fallback to emoji if image not found
-            self.tracker_icon.setText("🎯")
-            self.tracker_icon.setStyleSheet("""
+            self.prey_icon.setText("🎯")
+            self.prey_icon.setStyleSheet("""
                 QLabel {
                     color: #ff6b35;
                     font-size: 16px;
@@ -802,7 +798,7 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.position_elements()
         
         # Initially hide all elements since we start out of combat
-        self.ougigarou_icon.hide()
+        self.rage_icon.hide()
         self.rage_bar.hide()
         
         self.setCentralWidget(main_widget)
@@ -812,22 +808,18 @@ class WakfuOugiResourceTracker(QMainWindow):
         # Get rage bar position
         base_x = self.rage_bar.x()
         base_y = self.rage_bar.y()
-        # Position ougigarou icon to the RIGHT of the rage bar (user request)
-        icon_x = base_x + self.rage_bar.width() + 8
-        icon_y = base_y - 6
-        self.ougigarou_icon.move(icon_x + self.rage_offset_x, icon_y + self.rage_offset_y)
-        # Position rage counter on the same spot
-        self.rage_counter.move(icon_x + self.rage_offset_x, icon_y + self.rage_offset_y)
-
-        # Position tracker icon a bit to the right of the bar as a secondary icon
-        tracker_x = base_x + self.rage_bar.width() + 48
-        tracker_y = base_y - 2
-        self.tracker_icon.move(tracker_x, tracker_y)
+        
+        # Position rage icon (left of bar)
+        self.rage_icon.move(base_x - 35, base_y - 2)
+        
+        # Position tracker icon (right of bar)
+        self.tracker_icon.move(base_x + 255, base_y - 2)
+        
         # Position tracker counter (on top of tracker icon)
         self.tracker_counter.move(base_x + 255, base_y - 2)
         
         # Position rage icon (right of tracker + offset)
-        self.ougigarou_icon.move(base_x + 290 + self.rage_offset_x, base_y - 2 + self.rage_offset_y)
+        self.rage_icon.move(base_x + 290 + self.rage_offset_x, base_y - 2 + self.rage_offset_y)
         
         # Position rage counter (on top of rage icon)
         self.rage_counter.move(base_x + 290 + self.rage_offset_x, base_y - 2 + self.rage_offset_y)
@@ -1242,14 +1234,14 @@ class WakfuOugiResourceTracker(QMainWindow):
         
         # Show/hide overlay based on turn-based visibility (only during ougi's turn)
         if self.overlay_visible and self.in_combat:
-            self.ougigarou_icon.show()
+            self.rage_icon.show()
             self.rage_bar.show()
             self.position_elements()  # Ensure elements are positioned
             # Show timeline slots that have entries
             self.update_timeline_display()
 
         else:
-            self.ougigarou_icon.hide()
+            self.rage_icon.hide()
             self.rage_bar.hide()
             self.tracker_icon.hide()
             self.tracker_counter.hide()
@@ -1357,7 +1349,7 @@ class WakfuOugiResourceTracker(QMainWindow):
         
         # Update rage display - always show if we have stacks (regardless of turn state)
         if self.current_rage > 0 and self.in_combat:
-            self.ougigarou_icon.show()
+            self.rage_icon.show()
             self.rage_counter.setText(str(int(self.current_rage)))
             self.rage_counter.show()
             # Only print debug message when state changes
@@ -1380,10 +1372,10 @@ class WakfuOugiResourceTracker(QMainWindow):
             rage_y = int(base_y - 2 + self.rage_offset_y - self.rage_slide_offset + self.rage_bounce_offset)  # Slide + bounce offset
             
             # Move both icon and counter together
-            self.ougigarou_icon.move(rage_x, rage_y)
+            self.rage_icon.move(rage_x, rage_y)
             self.rage_counter.move(rage_x, rage_y)  # Counter follows the icon
         else:
-            self.ougigarou_icon.hide()
+            self.rage_icon.hide()
             self.rage_counter.hide()
             if self.current_rage > 0 and not self.in_combat and not self.last_rage_hidden_debug:
                 print(f"DEBUG: Préparation hidden due to combat end - stacks: {self.current_rage}")
@@ -1439,7 +1431,7 @@ class WakfuOugiResourceTracker(QMainWindow):
         if self.current_prey and self.overlay_visible and self.in_combat:
             # Set target alpha to 1.0 for fade in (only when it's Iop's turn)
             self.prey_target_alpha = 1.0
-            self.tracker_icon.show()
+            self.prey_icon.show()
             if not self.prey_visible:
                 print("DEBUG: Égaré icon showing (fade in)")
                 self.prey_visible = True
@@ -1450,9 +1442,9 @@ class WakfuOugiResourceTracker(QMainWindow):
             
             # Position tracker icon well above the first Tracker bar
             base_x, base_y = self.rage_bar.pos().x(), self.rage_bar.pos().y()
-            prey_x = base_x  # Same X position as first Tracker bar
-            prey_y = base_y - 50  # Much higher up above the Tracker bars
-            self.tracker_icon.move(prey_x, prey_y)
+            prey_x = base_x  # Same X position as first combo bar
+            prey_y = base_y - 50  # Much higher up above the combo bars
+            self.prey_icon.move(prey_x, prey_y)
         elif not self.current_prey:
             # Set target alpha to 0.0 for fade out (when tracker is lost)
             self.prey_target_alpha = 0.0
@@ -1480,14 +1472,14 @@ class WakfuOugiResourceTracker(QMainWindow):
         base_x, base_y = self.rage_bar.pos().x(), self.rage_bar.pos().y()
         prey_x = base_x
         prey_y = base_y - 50 - self.prey_slide_offset
-        self.tracker_icon.move(prey_x, prey_y)
+        self.prey_icon.move(prey_x, prey_y)
 
         # Apply fade alpha to icon (always process, regardless of combat status)
-        self.tracker_icon.setFadeAlpha(self.prey_fade_alpha)
+        self.prey_icon.setFadeAlpha(self.prey_fade_alpha)
         
         # Hide icon when fully faded out (always process, regardless of combat status)
         if self.prey_fade_alpha <= 0.0:
-            self.tracker_icon.hide()
+            self.prey_icon.hide()
             if self.prey_visible:
                 print("DEBUG: Égaré icon hidden (fully faded out)")
                 self.prey_visible = False
@@ -1686,15 +1678,14 @@ class WakfuOugiResourceTracker(QMainWindow):
                 return
             
             # Check if click is on rage icon
-            if self.ougigarou_icon.isVisible():
-                rage_rect = self.ougigarou_icon.geometry()
+            if self.rage_icon.isVisible():
+                rage_rect = self.rage_icon.geometry()
                 if rage_rect.contains(click_pos):
                     # Calculate offset from rage bar for rage
                     rage_base_x = self.rage_bar.x() + 290 + self.rage_offset_x
                     rage_base_y = self.rage_bar.y() - 2 + self.rage_offset_y
                     self.drag_start_position = click_pos - QPoint(rage_base_x, rage_base_y)
                     self.dragging_rage = False
-                    self.dragging_rage = True
                     print("DEBUG: Started dragging rage icon")
                     return
     
@@ -1734,7 +1725,6 @@ class WakfuOugiResourceTracker(QMainWindow):
                 print("DEBUG: Stopped dragging rage icon")
             self.dragging_rage = False
             self.dragging_tracker = False
-            self.dragging_rage = False
     
     def auto_save_positions(self):
         """Auto-save positions with a delay to avoid too frequent saves"""
