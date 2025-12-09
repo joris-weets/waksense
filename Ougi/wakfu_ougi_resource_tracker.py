@@ -11,6 +11,7 @@ import time
 import re
 import math
 import json
+import traceback
 from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QLabel, QProgressBar, QFrame, QMenu)
@@ -190,7 +191,7 @@ class OutlinedLabel(QLabel):
             painter.setPen(QPen(resource_color, 1))
             painter.drawText(resource_x, y, resource_part)
 
-class preyIcon(QLabel):
+class trackerIcon(QLabel):
     """Custom tracker icon with fade animation support"""
 
     def __init__(self, parent=None):
@@ -222,9 +223,9 @@ class preyIcon(QLabel):
         self._pixmap = pixmap
         super().setPixmap(pixmap)
 
-class rageIcon(QLabel):
-    """Custom rage icon with fade animation support"""
-    
+class modeIcon(QLabel):
+    """Custom mode icon with fade animation support"""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -283,7 +284,7 @@ class rageProgressBar(QProgressBar):
         
         self.setFixedHeight(24)
         self.setFixedWidth(250)
-        self.setRange(0, 100)
+        self.setRange(0, 30)
         self.setValue(0)
         
         # Hide default text
@@ -332,26 +333,24 @@ class rageProgressBar(QProgressBar):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Calculate progress percentage
-        progress = self.decimal_value / 100.0
+        progress = self.decimal_value / 30.0
         bar_width = int(self.width() * progress)
         
         # Create animated gradient based on progress
         gradient = QLinearGradient(0, 0, self.width(), 0)
         
         if progress < 0.3:
-            # Low rage: Cool blue tones
-            gradient.setColorAt(0, QColor(64, 181, 246, int(200 * self.gradient_offset)))      # Light blue
-            gradient.setColorAt(1, QColor(33, 150, 243, int(255 * self.gradient_offset)))     # Blue
+            # Low rage: Warm orange tones
+            gradient.setColorAt(0, QColor(255, 180, 80, int(200 * self.gradient_offset)))     # Clair orange
+            gradient.setColorAt(1, QColor(255, 140, 0, int(255 * self.gradient_offset)))      # Orange profond
         elif progress < 0.7:
-            # Medium rage: Blue to cyan transition
-            gradient.setColorAt(0, QColor(33, 150, 243, int(220 * self.gradient_offset)))     # Blue
-            gradient.setColorAt(0.5, QColor(0, 188, 212, int(240 * self.gradient_offset)))    # Cyan
-            gradient.setColorAt(1, QColor(0, 172, 193, int(255 * self.gradient_offset)))     # Dark cyan
+            gradient.setColorAt(0, QColor(255, 160, 0, int(220 * self.gradient_offset)))
+            gradient.setColorAt(0.5, QColor(255, 120, 0, int(240 * self.gradient_offset)))
+            gradient.setColorAt(1, QColor(255, 80, 0, int(255 * self.gradient_offset)))
         else:
-            # High rage: Cyan to electric blue
-            gradient.setColorAt(0, QColor(0, 172, 193, int(240 * self.gradient_offset)))     # Dark cyan
-            gradient.setColorAt(0.5, QColor(3, 169, 244, int(255 * self.gradient_offset)))   # Electric blue
-            gradient.setColorAt(1, QColor(0, 123, 255, int(255 * self.gradient_offset)))     # Bright blue
+            gradient.setColorAt(0, QColor(255, 90, 0, int(240 * self.gradient_offset)))
+            gradient.setColorAt(0.5, QColor(255, 50, 0, int(255 * self.gradient_offset)))
+            gradient.setColorAt(1, QColor(220, 20, 0, int(255 * self.gradient_offset)))
         
         # Draw background
         painter.fillRect(0, 0, self.width(), self.height(), QColor(0, 0, 0, 77))  # Semi-transparent black
@@ -369,7 +368,7 @@ class rageProgressBar(QProgressBar):
         painter.setFont(font)
         
         # Get text - use decimal_value for accurate display
-        text = f"{round(self.decimal_value)}/100"
+        text = f"{round(self.decimal_value)}/30"
         
         # Get text metrics
         metrics = painter.fontMetrics()
@@ -458,25 +457,16 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.hidden_mode = hidden_mode
         
         # Resource tracking variables
-        self.rage = 0
+        self.rage_value = 0
         self.tracker = 0
-        self.prey = False
-        self.rage = 0
         self.current_rage = 0
         self.current_tracker = 0
-        self.current_prey = False
-        self.current_rage = 0
-        
-        # Préparation Damage Confirmation System
-        self.pending_rage_loss = False  # True when waiting for damage confirmation
-        self.rage_loss_caster = None  # Player who cast spell that should remove rage
-        self.rage_loss_spell = None  # Spell that should remove rage
-        self.in_combat = False
         
         # Player tracking
         self.tracked_player_name = None  # Track the player we're monitoring
         
         # Combat detection
+        self.in_combat = False
         self.is_sac_patate_combat = False  # Track if we're fighting Sac à patate
         
         # Turn-based visibility system
@@ -487,7 +477,7 @@ class WakfuOugiResourceTracker(QMainWindow):
             "Croc-en-jambe", "Bastonnade", "Molosse", "Hachure", "Saccade", # Earth spells
             "Balayage", "Contusion", "Cador",  "Brise'Os", "Baroud", # Wind spells
             "Chasseur", "Élan", "Canine", "Apaisement", "Poursuite", "Meute", # Neutral spells
-            "Proie", "Ougigarou", "Chienchien", "Poursuivant" # Innate spells
+            "Proie", "ougigarou", "Chienchien", "Poursuivant" # Innate spells
         ]
         
         # Duplicate prevention system
@@ -500,6 +490,21 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.animation_frame = 0
         self.smooth_transitions = False  # Disable smooth transitions for more responsive updates
         
+        # Rage icon animation - slide down on appearance
+        self.rage_slide_offset = 0
+        self.rage_slide_speed = 1.2
+        self.rage_bounce_offset = 0
+        self.rage_bounce_velocity = 0
+        self.rage_bounce_gravity = 0.8
+        self.rage_bounce_damping = 0.7
+        self.rage_bounce_min_velocity = 0.2
+        self.rage_bounce_ground_level = 0
+        self.rage_bounce_loop_active = False
+        self.rage_bounce_loop_delay = 0
+        self.rage_bounce_delay = 0
+        self.rage_bounce_loop_delay_max = 90
+
+
         # tracker icon animation - realistic bouncing physics
         self.tracker_bounce_offset = 0
         self.tracker_bounce_velocity = 0  # Current velocity (pixels per frame)
@@ -507,46 +512,10 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.tracker_bounce_damping = 0.7  # Energy loss on bounce (0.7 = loses 30% energy each bounce)
         self.tracker_bounce_min_velocity = 0.3  # Stop bouncing when velocity is very small
         self.tracker_ground_level = 0  # Ground level (normal position)
-        
-        # Égaré icon animation variables
-        self.prey_fade_alpha = 0.0  # Current opacity (0.0 to 1.0)
-        self.prey_target_alpha = 0.0  # Target opacity
-        # Use separate speeds for fade-in and fade-out for better feel
-        self.prey_fade_in_speed = 0.08   # per frame when fading in
-        self.prey_fade_out_speed = 0.14  # per frame when fading out (faster)
-        self.prey_visible = False  # Track on-screen visibility for debug
-        self.prey_slide_offset = 0  # Slide-in offset (pixels)
-        self.prey_slide_speed = 2  # Pixels per frame during fade-in (faster)
-        self.prey_slide_max = 14  # Start this many pixels above and slide down
-
-        # Préparation icon animation variables
-        self.rage_fade_alpha = 0.0  # Current opacity (0.0 to 1.0)
-        self.rage_target_alpha = 0.0  # Target opacity
-        self.rage_fade_in_speed = 0.08   # per frame when fading in
-        self.rage_fade_out_speed = 0.14  # per frame when fading out (faster)
-        self.rage_visible = False  # Track on-screen visibility for debug
-        self.rage_slide_offset = 0  # Slide-in offset (pixels)
-        self.rage_slide_speed = 2  # Pixels per frame during fade-in (faster)
-        self.rage_slide_max = 14  # Start this many pixels above and slide down
-
-        # Préparation bounce animation variables
-        self.rage_bounce_offset = 0
-        self.rage_bounce_velocity = 0  # Current velocity (pixels per frame)
-        self.rage_bounce_gravity = 2.0  # Gravity acceleration (faster)
-        self.rage_bounce_damping = 0.6  # Energy loss on bounce (0.6 = loses 40% energy each bounce, faster decay)
-        self.rage_bounce_min_velocity = 0.5  # Stop bouncing when velocity is very small (higher threshold)
-        self.rage_bounce_ground_level = 0  # Ground level (normal position)
-        self.rage_bounce_delay = 0  # Delay before bouncing starts (frames)
-        self.rage_bounce_delay_max = 15  # Wait 15 frames (0.25 seconds at 60fps) before bouncing (faster)
-        self.rage_bounce_loop_delay = 0  # Delay between bounce loops (frames)
-        self.rage_bounce_loop_delay_max = 30  # Wait 30 frames (0.5 seconds) between bounce loops (faster)
-        self.rage_bounce_loop_active = False  # Whether continuous bouncing is active
 
         # Debug state tracking to prevent spam
-        self.last_tracker_bars_state = 0  # Track last tracker bars count
         self.last_tracker_state = 0  # Track last tracker state
         self.last_rage_state = 0  # Track last rage state
-        self.last_tracker_hidden_debug = False  # Track if tracker hidden debug was printed
         self.last_tracker_hidden_debug = False  # Track if tracker hidden debug was printed
         self.last_rage_hidden_debug = False  # Track if rage hidden debug was printed
 
@@ -556,32 +525,33 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.timeline_icon_labels = []
         self.timeline_cost_labels = []
         self.spell_icon_stem_map = {
-            "Emeute": "emeute",
-            "Fléau": "fleau",
-            "Rupture": "rupture",
-            "Plombage": "plombage",
-            "Balafre": "balafre",
-            "Croc-en-jambe": "crocenjambe",
-            "Bastonnade": "bastonnade",
-            "Molosse": "molosse",
-            "Hachure": "hachure",
-            "Saccade": "saccade",
-            "Balayage": "balayage",
-            "Contusion": "contusion",
-            "Cador": "cador",
-            "Brise'Os": "briseos",
-            "Baroud": "baroud",
-            "Chasseur": "chasseur",
-            "Élan": "elan",
-            "Canine": "canine",
-            "Apaisement": "apaisement",
-            "Poursuite": "poursuite",
-            "Meute": "meute",
-            "Proie": "proie",
-            "Ougigarou": "ougigarou",
-            "Chienchien": "chienchien",
-            "Poursuivant": "poursuivant",
+            "Emeute": 3,
+            "Fléau": 5,
+            "Rupture": 2,
+            "Plombage": 3,
+            "Balafre": 5,
+            "Croc-en-jambe": 2,
+            "Bastonnade": 4,
+            "Molosse": 4,
+            "Hachure": 3,
+            "Saccade": 4,
+            "Balayage": 4,
+            "Contusion": 3,
+            "Cador": 4,
+            "Brise'Os": 2,
+            "Baroud": 7,
+            "Chasseur": 0,
+            "Élan": 0,
+            "Canine": 0,
+            "Apaisement": 0,
+            "Poursuite": 0,
+            "Meute": 0,
+            "Proie": 0,
+            "ougigarou": 0,
+            "Chienchien": 0,
+            "Poursuivant": 0,
         }
+
 
         # Paths
         # Get the directory where the script is located (works for both script and executable)
@@ -593,8 +563,6 @@ class WakfuOugiResourceTracker(QMainWindow):
             self.base_path = Path(__file__).parent
         self.ougigarou_icon_path = self.base_path / "img" / "ougigarou.png"
         self.tracker_icon_path = self.base_path / "img" / "proie.png"
-
-        #TODO: icons ?
         
         # Log file path - use default Wakfu logs location
         user_profile = Path.home()
@@ -606,10 +574,9 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.auto_save_timer = None
         self.drag_start_position = QPoint()
         self.dragging_rage = False
-        self.dragging_rage = False
-        self.rage_offset_x = 0  # Offset for rage icon from rage bar
-        self.rage_offset_y = 0
-        
+        self.rage_offset_x = 0  # Offset for rage bar
+        self.rage_offset_y = 0  # Offset for rage bar
+
         self.setup_ui()
         self.setup_log_monitoring()
         self.setup_animations()
@@ -652,74 +619,44 @@ class WakfuOugiResourceTracker(QMainWindow):
         main_widget.setLayout(QVBoxLayout())
         main_widget.layout().setContentsMargins(0, 0, 0, 0)
         
-        # rage icon (positioned absolutely)
-        self.rage_icon = QLabel()
-        self.rage_icon.setFixedSize(28, 28)
-        self.rage_icon.setScaledContents(True)
-        self.rage_icon.setParent(main_widget)
-        
-        if self.rage_icon_path.exists():
-            pixmap = QPixmap(str(self.rage_icon_path))
-            self.rage_icon.setPixmap(pixmap.scaled(28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            self.rage_icon.setStyleSheet("background-color: transparent;")
-        else:
-            self.rage_icon.setText("🐶")
-            self.rage_icon.setStyleSheet("""
-                QLabel {
-                    color: #64b5f6;
-                    font-size: 20px;
-                    font-weight: bold;
-                    background-color: transparent;
-                }
-            """)
-        
         # rage progress bar
         self.rage_bar = rageProgressBar()
         self.rage_bar.setParent(main_widget)
-        
-        # tracker icon (positioned absolutely, initially hidden)
-        self.tracker_icon = QLabel()
-        self.tracker_icon.setFixedSize(28, 28)
-        self.tracker_icon.setScaledContents(True)
-        self.tracker_icon.setParent(main_widget)
-        self.tracker_icon.hide()
-        
-        if self.tracker_icon_path.exists():
-            pixmap = QPixmap(str(self.tracker_icon_path))
-            self.tracker_icon.setPixmap(pixmap.scaled(28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            self.tracker_icon.setStyleSheet("background-color: transparent;")
-        else:
-            self.tracker_icon.setText("⚡")
-            self.tracker_icon.setStyleSheet("""
-                QLabel {
-                    color: #ff6b35;
-                    font-size: 20px;
-                    font-weight: bold;
-                    background-color: transparent;
-                }
-            """)
+
+        # --- Positionner la rage bar au centre et en bas de l'écran ---
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+        screen_width = screen_geometry.width()
+        screen_height = screen_geometry.height()
+
+        bar_width = self.rage_bar.width()
+        bar_height = self.rage_bar.height()
+
+        # Position centrée horizontalement, et un peu au-dessus du bas (ex: +10% depuis le bas)
+        x = (screen_width - bar_width) // 2
+        y = int(screen_height * 0.85)  # 85% de la hauteur → un peu au-dessus du bas
+
+        self.rage_bar.move(x, y)
         
         # tracker counter (positioned absolutely, initially hidden)
         self.tracker_counter = OutlinedLabel()
         self.tracker_counter.setFixedSize(28, 28)
         self.tracker_counter.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.tracker_counter.setParent(main_widget)
-        self.tracker_counter.hide()
         
-        # Préparation icon (positioned absolutely, initially hidden)
-        self.rage_icon = QLabel()
-        self.rage_icon.setFixedSize(40, 40)
-        self.rage_icon.setScaledContents(True)
-        self.rage_icon.setParent(main_widget)
-        self.rage_icon.hide()
+        # Tracker icon (positioned absolutely, initially hidden)
+        self.tracker_icon = QLabel()
+        self.tracker_icon.setFixedSize(40, 40)
+        self.tracker_icon.setScaledContents(True)
+        self.tracker_icon.setParent(main_widget)
         
-        if self.rage_icon_path.exists():
-            pixmap = QPixmap(str(self.rage_icon_path))
-            self.rage_icon.setPixmap(pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            self.rage_icon.setStyleSheet("background-color: transparent;")
+        if self.tracker_icon_path.exists():
+            pixmap = QPixmap(str(self.tracker_icon_path))
+            self.tracker_icon.setPixmap(pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.tracker_icon.setStyleSheet("background-color: transparent;")
         else:
-            self.rage_icon.setText("📋")
-            self.rage_icon.setStyleSheet("""
+            self.tracker_icon.setText("📋")
+            self.tracker_icon.setStyleSheet("""
                 QLabel {
                     color: #ff9800;
                     font-size: 28px;
@@ -727,6 +664,8 @@ class WakfuOugiResourceTracker(QMainWindow):
                     background-color: transparent;
                 }
             """)
+
+            print("DEBUG: rage_icon initial position =", self.rage_tracker.pos())
         
         # rage counter (positioned absolutely, initially hidden)
         self.rage_counter = OutlinedLabel()
@@ -734,45 +673,6 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.rage_counter.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.rage_counter.setParent(main_widget)
         self.rage_counter.hide()
-        
-        # tracker bars (2 small bars, initially hidden)
-        self.tracker_bars = []
-        for i in range(2):
-            bar = QFrame()
-            bar.setFixedSize(30, 6)  # Small horizontal bars
-            bar.setParent(main_widget)
-            bar.setStyleSheet("""
-                QFrame {
-                    background-color: rgba(255, 255, 255, 30);
-                    border: 1px solid rgba(255, 255, 255, 50);
-                    border-radius: 3px;
-                }
-            """)
-            bar.hide()
-            self.tracker_bars.append(bar)
-        
-        # prey icon (positioned above first combo bar, initially hidden)
-        self.prey_icon = preyIcon()
-        self.prey_icon.setFixedSize(24, 24)
-        self.prey_icon.setScaledContents(True)
-        self.prey_icon.setParent(main_widget)
-        self.prey_icon.hide()
-        
-        if self.prey_icon_path.exists():
-            pixmap = QPixmap(str(self.prey_icon_path))
-            scaled_pixmap = pixmap.scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            self.prey_icon.setPixmap(scaled_pixmap)
-        else:
-            # Fallback to emoji if image not found
-            self.prey_icon.setText("🎯")
-            self.prey_icon.setStyleSheet("""
-                QLabel {
-                    color: #ff6b35;
-                    font-size: 16px;
-                    font-weight: bold;
-                    background-color: transparent;
-                }
-            """)
 
         # Create timeline UI elements (icons and cost overlays)
         for _ in range(self.timeline_max_slots):
@@ -798,7 +698,6 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.position_elements()
         
         # Initially hide all elements since we start out of combat
-        self.rage_icon.hide()
         self.rage_bar.hide()
         
         self.setCentralWidget(main_widget)
@@ -808,27 +707,32 @@ class WakfuOugiResourceTracker(QMainWindow):
         # Get rage bar position
         base_x = self.rage_bar.x()
         base_y = self.rage_bar.y()
+
+        icon_x = base_x + 255
+        icon_y = base_y - 2
+
+        self.tracker_icon.move(icon_x, icon_y)
+        self.tracker_counter.move(icon_x, icon_y)
+
+        # Positionner le texte juste en dessous de l’icône
+        counter_x = icon_x
+        counter_y = icon_y + self.tracker_icon.height() - 4  # léger chevauchement pour coller à l’icône
+        self.tracker_counter.move(counter_x, counter_y)
+        self.tracker_counter.show()
+
+        self.tracker_counter.setFixedSize(40, 18)  # un peu plus large
+        self.tracker_counter.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                font-weight: bold;
+                color: white;
+                background-color: transparent;
+            }
+        """)
         
-        # Position rage icon (left of bar)
-        self.rage_icon.move(base_x - 35, base_y - 2)
-        
-        # Position tracker icon (right of bar)
-        self.tracker_icon.move(base_x + 255, base_y - 2)
-        
-        # Position tracker counter (on top of tracker icon)
-        self.tracker_counter.move(base_x + 255, base_y - 2)
-        
-        # Position rage icon (right of tracker + offset)
-        self.rage_icon.move(base_x + 290 + self.rage_offset_x, base_y - 2 + self.rage_offset_y)
-        
+
         # Position rage counter (on top of rage icon)
         self.rage_counter.move(base_x + 290 + self.rage_offset_x, base_y - 2 + self.rage_offset_y)
-        
-        # Position tracker bars (on top of rage bar)
-        for i, bar in enumerate(self.tracker_bars):
-            bar_x = base_x + (i * 35)  # 35px spacing between bars
-            bar_y = base_y - 15  # 15px above the rage bar
-            bar.move(bar_x, bar_y)
 
         # Position tracker icon (well above the first tracker bar - 10/50)
         tracker_x = base_x  # Same X position as first tracker bar
@@ -877,10 +781,20 @@ class WakfuOugiResourceTracker(QMainWindow):
         self.addAction(force_close_action)
     
     def parse_log_line(self, line):
-        """Parse log line for Ougir resources"""
+        """Parse log line for Ougi resources"""
+
+        if "[Information (combat)]" not in line:
+            return  # Ignore non-combat lines
+
         try:
-            # Prevent duplicate processing of the same spell cast within a short time window
+            # Prevent duplicate processing of the same spell cast within a short time window      
             # Extract the core content without timestamp for spell lines
+
+            # Create tracker_gain attribute if it doesn't exist
+            self.tracker_gain = getattr(self, "tracker_gain", False)
+            self.tracker_canin_passive = getattr(self, "tracker_canin_passive", False)
+            self.marchandage_passive = getattr(self, "marchandage_passive", False)
+
             if "lance le sort" in line:
                 # Extract player and spell info for duplicate detection
                 spell_match = re.search(r'\[Information \(combat\)\] ([^:]+)[:\s]+lance le sort ([^(]+)', line)
@@ -920,7 +834,7 @@ class WakfuOugiResourceTracker(QMainWindow):
             if "Sac à patate" in line and ("Quand tu auras fini de me frapper" in line or "abandonner" in line or "Abandonne le combat" in line):
                 self.is_sac_patate_combat = True
             
-            # Check for combat start and Iop turn detection - CONSOLIDATED SPELL PROCESSING
+            # Check for combat start and Ougi turn detection - CONSOLIDATED SPELL PROCESSING
             if "lance le sort" in line:
                 # Extract player name for spell cast lines; supports both "Name: lance le sort" and "Name lance le sort"
                 player_spell_match = re.search(r'\[Information \(combat\)\]\s+([^:]+):\s+lance le sort', line)
@@ -956,58 +870,54 @@ class WakfuOugiResourceTracker(QMainWindow):
                 timestamp = time.strftime("%H:%M:%S")
                 print(f"DEBUG [{timestamp}]: Spell cast detected - caster='{caster_name}', spell='{spell_name}', tracked='{self.tracked_player_name}', is_tracked={is_tracked_caster}, is_ougi_spell={is_ougi_spell}")
 
-                # Initialize tracker only once per combat, when transitioning into combat due to the tracked player's first cast
+                # Initialize only once per combat, when transitioning into combat due to the tracked player's first cast
                 if not self.in_combat and is_tracked_caster:
                     self.in_combat = True
                     self.tracker = 0
                     self.current_tracker = 0
-                    print("DEBUG: Combat started by tracked player; tracker initialized to 0")
+                    self.ougigarou = False
+                    self.human = True
+                    self.rage_value = 0
+                    self.tracker_gain = False
+                    
+
+                    print("DEBUG: Combat started; tracker initialized to 0")
                 else:
                     # Still mark combat as active, but do not reinitialize tracker
                     self.in_combat = True
-                
+
                 # Show overlay immediately when Ougi spell is cast by tracked player
                 if is_ougi_spell and is_tracked_caster:
                     self.is_ougi_turn = True
                     self.overlay_visible = True
                     print(f"DEBUG: Ougi turn started - overlay shown for '{spell_name}'")
-
-                # Handle specific spell effects for tracked player
-                if is_tracked_caster and spell_name:
-                    # Track Étendard de bravoure for cost adjustment
-                    if spell_name == "Étendard de bravoure":
-                        self.last_etendard_cast = True
-                        print(f"DEBUG: Étendard de bravoure detected - waiting for next line to determine cost")
-                    else:
-                        self.last_etendard_cast = False
-                    
-                    # Add spell to timeline
-                    self.add_spell_to_timeline(spell_name)
-                    print(f"DEBUG: Spell '{spell_name}' added to timeline for tracked player")
                 
-                # Return to prevent further processing of this line
-                return
-            
+ 
+
             # Normal combat end: "Combat terminé, cliquez ici pour rouvrir l'écran de fin de combat."
             if "Combat terminé" in line or "Combat terminé, cliquez ici pour rouvrir l'écran de fin de combat." in line:
                 combat_ended = True
-            
+
             # Exception: KO/hors-combat only triggers end for Sac à patate combat
             elif (re.search(r'est hors-combat', line) or re.search(r'est KO !', line)) and self.is_sac_patate_combat:
                 combat_ended = True
-            
+            else:
+                combat_ended = False
+
             if combat_ended:
                 self.in_combat = False
                 self.is_sac_patate_combat = False  # Reset Sac à patate flag
                 self.is_ougi_turn = False  # Reset turn state
                 self.overlay_visible = False  # Hide overlay
                 # Reset all resources when combat ends
-                self.rage = 0
+                self.rage_value = 0
                 self.tracker = 0
-                self.prey = False
+                self.ougigarou = False
+                self.human = True
+                self.tracker = False
                 self.current_rage = 0
                 self.current_tracker = 0
-                self.current_prey = False
+                self.current_tracker = False
                 self.current_rage = 0
                 # Stop rage bouncing loop
                 self.rage_bounce_loop_active = False
@@ -1026,207 +936,105 @@ class WakfuOugiResourceTracker(QMainWindow):
                     self.timeline_cost_labels[i].hide()
                 print("DEBUG: Combat ended - overlay hidden and timeline cleared")
                 return
-            
-            # Only process combat lines
-            if "[Information (combat)]" not in line:
+
+            # Parse the form of the ouginak
+            if "Ougigarou (Niv. 1)" in line:
+                self.ougigarou = True
+                self.human = False
+                print("DEBUG: Ouginak transformed into 'Ougigarou' form")
                 return
-            #TODO: ougi styles
-            # Parse rage - actual format: "rage (+65 Niv.)"
-            rage_match = re.search(r'rage \(\+(\d+) Niv\.\)', line)
-            if rage_match:
-                # Extract player name from rage log
-                player_rage_match = re.search(r'\[Information \(combat\)\] ([^:]+): rage', line)
-                if player_rage_match:
-                    self.tracked_player_name = player_rage_match.group(1)
-                
+
+            if "n'est plus sous l'emprise de 'Ougigarou'" in line:
+                self.ougigarou = False
+                self.human = True
+                self.rage_value = 0  # Reset rage when reverting to human form
+                print("DEBUG: Ouginak reverted to human form (Rage reset to 0)")
+                return
+            
+            # Parse Marchandage passive
+            if "Résistance Élémentaire (Marchandage)" in line:
+                self.marchandage_passive = True
+                print("DEBUG: Marchandage passive detected")
+                return
+
+            # Parse rage - actual format: "caster: X Rage"
+            rage_match = re.search(r': (\d+) Rage', line)
+            print(f"DEBUG: Parsing rage line: {line.strip()}")
+
+            # if the ouginak is in human form, parse rage
+            if rage_match and self.human:
+                print("rage")
                 rage_value = int(rage_match.group(1))
-                
-                # Check if rage reaches 100+ (triggers overflow and tracker loss)
-                if rage_value >= 100:
-                    # Wrap around using modulo - e.g., 140 becomes 40
-                    self.rage = rage_value % 100
-                    # Lose tracker buff when rage overflows
-                    if self.prey:
-                        self.prey = False
-                        self.current_prey = self.prey
-                        # Start fade out (animated)
-                        self.prey_target_alpha = 0.0
-                        if self.prey_visible:
-                            print("DEBUG: Égaré removed due to rage overflow")
-                            self.prey_visible = False
-                else:
-                    # Normal rage tracking
-                    self.rage = rage_value
+                self.rage_value = self.rage_value + rage_value
+                print(f"DEBUG: Updated rage: {self.rage_value} (added {rage_value})")
+                # if rage exceeds 30, caps at 40
+                if self.rage_value > 30:
+                    self.max_rage = 40
+                # if the obtained rage is 0, we find max rage
+                elif int(rage_match.group(1)) == 0:
+                    self.max_rage = self.rage_value
+
+                # Update current rage display
+                self.current_rage = self.rage_value
                 return
-            
-            # Parse Égaré loss - turn passing ("seconde reportée pour le tour suivant" or "secondes reportées pour le tour suivant")
-            # This MUST be checked BEFORE tracker loss to avoid early return
-            if ("reportée pour le tour suivant" in line) or ("reportées pour le tour suivant" in line):
-                print(f"DEBUG: Turn end detected in log: {line.strip()[:80]}...")
+
+            # Parse the consumption of rage for spells cast by the tracked player
+            if self.ougigarou and "lance le sort" in line:
+                   # reduce rage when a spell is cast by the tracked player in ougigarou form
+                if spell_name in self.spell_icon_stem_map:
+                    rage_cost = self.spell_icon_stem_map[spell_name]
+                    self.rage_value = max(0, self.rage_value - rage_cost)
+                    print(f"DEBUG: Rage -{rage_cost} (spell: {spell_name}) → Rage = {self.rage_value}")
+                    # Update current rage display
+                    self.current_rage = self.rage_value
+                    return
                 
-                # Determine which player's turn is ending
-                # Use the last player who cast a spell as the turn owner
-                turn_owner = self.last_spell_caster
-                print(f"DEBUG: Turn end detected - last spell caster was: '{turn_owner}' (tracked: '{self.tracked_player_name}')")
-                
-                if turn_owner and self.tracked_player_name and turn_owner == self.tracked_player_name:
-                    # The tracked Iop is passing turn - hide overlay
-                    self.is_ougi_turn = False
-                    self.overlay_visible = False
-                    
-                    # If we were waiting for damage confirmation, cancel it
-                    if self.pending_rage_loss:
-                        self.pending_rage_loss = False
-                        self.rage_loss_caster = None
-                        self.rage_loss_spell = None
-                        print(f"DEBUG: Préparation damage confirmation cancelled - turn passed without damage")
-                    
-                    print(f"DEBUG: Iop turn ended - overlay hidden (turn passed by {turn_owner})")
-                elif turn_owner:
-                    # Different player is passing turn - overlay remains as is
-                    print(f"DEBUG: Turn passed by different player '{turn_owner}' - overlay remains {'visible' if self.overlay_visible else 'hidden'}")
-                else:
-                    # No recent spell caster - assume it's the tracked player's turn ending
-                    print(f"DEBUG: No recent spell caster - assuming tracked player's turn ending")
-                    if self.tracked_player_name:
-                        self.is_ougi_turn = False
-                        self.overlay_visible = False
-                        
-                        # If we were waiting for damage confirmation, cancel it
-                        if self.pending_rage_loss:
-                            self.pending_rage_loss = False
-                            self.rage_loss_caster = None
-                            self.rage_loss_spell = None
-                            print(f"DEBUG: Préparation damage confirmation cancelled - assumed turn end without damage")
-                        
-                        print(f"DEBUG: Iop turn ended - overlay hidden (assumed turn end)")
-                    else:
-                        print(f"DEBUG: No tracked player set - cannot determine turn owner")
-                
-                if self.prey:
-                    self.prey = False
-                    self.current_prey = self.prey
-                    # Start fade out (animated)
-                    self.prey_target_alpha = 0.0
-                    if self.prey_visible:
-                        print("DEBUG: Égaré removed due to turn carryover")
-                        self.prey_visible = False
-                
-                # Clear timeline when turn passes
-                timeline_count = len(self.timeline_entries)
-                if timeline_count > 0:
-                    print(f"DEBUG: Clearing {timeline_count} timeline entries due to turn end")
-                    self.timeline_entries.clear()
-                    # Hide all timeline elements immediately
-                    for i in range(self.timeline_max_slots):
-                        self.timeline_icon_labels[i].hide()
-                        self.timeline_cost_labels[i].hide()
-                else:
-                    print("DEBUG: Timeline already empty - no clearing needed")
-                
-                return
-            
-            # Parse tracker - actual format: "tracker (+50 Niv.)"
-            tracker_match = re.search(r'tracker \(\+(\d+) Niv\.\)', line)
+
+            # Parse tracker - actual format: "Tracker (+X Niv.) (X)"
+            tracker_match = re.search(r"Traqueur\s*\(\+?(\d+)\s*Niv\.?\)(?:\s*\(\s*(Traqueur\s*Canin)\s*\))?", line)
             if tracker_match:
+                self.tracker_gain = True
                 tracker_value = int(tracker_match.group(1))
-                self.tracker = min(tracker_value, 50)  # Cap at 50
-                # Force immediate display update
+                # if tracker_canin_passive is present, keep it in mind
+                if tracker_match.group(2):
+                    # Traqueur Canin detected - keep the information
+                    self.tracker_canin_passive = True
+                    print(f"DEBUG: Traqueur Canin detected - Tank tracker")
+                    
+                # Normal tracker gain
+                self.tracker_gain = True
+                self.tracker = tracker_value
                 self.current_tracker = self.tracker
+                print(f"DEBUG: Tracker gained → +{tracker_value}")
                 return
             
-            # Parse tracker loss - "n'est plus sous l'emprise de 'tracker' (Iop isolé)"
-            if "n'est plus sous l'emprise de 'tracker' (Iop isolé)" in line:
-                # Extract player name and only apply to tracked player
-                player_tracker_loss_match = re.search(r'\[Information \(combat\)\] ([^:]+): n\'est plus sous l\'emprise de \'tracker\'', line)
-                if player_tracker_loss_match and self.tracked_player_name:
-                    player_name = player_tracker_loss_match.group(1)
-                    if player_name == self.tracked_player_name:
-                        self.tracker = max(0, self.tracker - 10)  # Lose 10 tracker, minimum 0
-                        # Force immediate display update
-                        self.current_tracker = self.tracker
-                return
-            
-            # Parse tracker gains - "tracker (+30 Niv.) (Compulsion)" OR "tracker (+1 Niv.) (rage)"
-            # Note: The number in (+X Niv.) is the TOTAL current amount, not the amount gained
-            tracker_gain_match = re.search(r'tracker \(\+(\d+) Niv\.\) \((Compulsion|rage)\)', line)
-            if tracker_gain_match:
-                tracker_total = int(tracker_gain_match.group(1))
-                old_tracker = self.tracker
-                self.tracker = min(tracker_total, 4)  # Set to the total amount shown in log, max 4 stacks
-                # Force immediate display update
-                self.current_tracker = self.tracker
-                # Trigger bounce animation when gaining tracker (only if it increased)
-                if self.tracker > old_tracker:
-                    self.trigger_tracker_bounce()
-                return
-            
-            # Parse tracker loss - "n'est plus sous l'emprise de 'tracker' (Compulsion)"
-            if "n'est plus sous l'emprise de 'tracker' (Compulsion)" in line:
-                # Extract player name and only apply to tracked player
-                player_tracker_loss_match = re.search(r'\[Information \(combat\)\] ([^:]+): n\'est plus sous l\'emprise de \'tracker\'', line)
-                if player_tracker_loss_match and self.tracked_player_name:
-                    player_name = player_tracker_loss_match.group(1)
-                    if player_name == self.tracked_player_name:
-                        self.tracker = 0  # Lose ALL stacks
-                        # Force immediate display update
-                        self.current_tracker = self.tracker
-                return
-            
-            # Note: Spell processing is now consolidated above to prevent duplicate timeline entries
-            
-            # Parse tracker loss - damage dealt with (tracker) tag
-            # Pattern: "[Information (combat)] monster: -xx PV (element) (tracker)"
-            if "(tracker)" in line and "PV" in line:
-                tracker_damage_match = re.search(r'\[Information \(combat\)\] .*: -(\d+) PV \([^)]+\) \(tracker\)', line)
-                if tracker_damage_match:
-                    self.tracker = 0  # Lose ALL stacks when damage is dealt with tracker
-                    # Force immediate display update
-                    self.current_tracker = self.tracker
-                    return
-            
-            # Parse Préparation gains - "Belluya: Préparation (+20 Niv.)"
-            rage_gain_match = re.search(r'Préparation \(\+(\d+) Niv\.\)', line)
-            if rage_gain_match:
-                rage_total = int(rage_gain_match.group(1))
-                old_rage = self.rage
-                self.rage = rage_total  # Set to the total amount shown in log
-                # Force immediate display update
-                self.current_rage = self.rage
-                # Trigger slide animation when gaining rage (only if it increased)
-                if self.rage > old_rage:
-                    self.trigger_rage_slide()
-                print(f"DEBUG: Préparation gained: {rage_total} stacks")
-                return
-            
-            # Parse damage lines - "Sac à patates: -64 PV  (Feu)" or "Sac à patates: -133 PV (Feu) (tracker)"
-            damage_match = re.search(r'\[Information \(combat\)\] ([^:]+):\s*-(\d+)\s*PV', line)
-            if damage_match and self.pending_rage_loss:
-                damage_target = damage_match.group(1).strip()
-                damage_amount = int(damage_match.group(2))
-                
-                print(f"DEBUG: Damage detected: {damage_amount} PV to {damage_target} (waiting for: {self.rage_loss_caster})")
-                
-                # Check if this damage is from the tracked player's spell
-                if self.rage_loss_caster == self.tracked_player_name:
-                    # Damage confirmed - remove Préparation
-                    self.rage = 0
-                    self.current_rage = self.rage
-                    # Stop continuous bouncing loop
-                    self.rage_bounce_loop_active = False
-                    self.rage_bounce_velocity = 0
-                    self.rage_bounce_offset = 0
-                    # Reset damage confirmation system
-                    self.pending_rage_loss = False
-                    self.rage_loss_caster = None
-                    self.rage_loss_spell = None
-                    print(f"DEBUG: Préparation lost due to confirmed damage: {damage_amount} PV to {damage_target}")
+            if "tour suivant" in line:
+                # if the tracked player don't hit an enemy during this turn, reset tracker to 0
+                if not self.tracker_gain:
+                    self.tracker = 0
+                    self.current_tracker = 0
+                    print("DEBUG: No tracker gain this turn → Tracker reset to 0")
+
+                if self.marchandage_passive and self.ougigarou:
+                    self.rage_value = max(0, self.rage_value - 5)
+                    print(f"DEBUG: Marchandage penalty applied → Rage -5 (Rage = {self.rage_value})")
                     return
                 else:
-                    print(f"DEBUG: Damage detected but not from tracked player - caster: {self.rage_loss_caster}, tracked: {self.tracked_player_name}")
-                
+                    print(f"DEBUG: Tracker gain confirmed this turn → Tracker = {self.tracker}")
+                    # Reset for the next turn
+                    self.tracker_gain = False
+
+
         except Exception as e:
-            pass  # Silently handle parsing errors
+                
+                print("\n===== ERREUR DANS parse_log_line =====")
+                print(f"Erreur : {type(e).__name__} → {e}")
+
+                # Affiche l'endroit exact (fichier + ligne)
+                tb = traceback.extract_tb(e.__traceback__)[-1]
+                print(f"Ligne : {tb.lineno}  |  Fichier : {tb.filename}")
+                print(f"Code fautif : {tb.line}")
+                print("=======================================\n")
     
     def update_animations(self):
         """Update animations and visual effects"""
@@ -1234,72 +1042,31 @@ class WakfuOugiResourceTracker(QMainWindow):
         
         # Show/hide overlay based on turn-based visibility (only during ougi's turn)
         if self.overlay_visible and self.in_combat:
-            self.rage_icon.show()
             self.rage_bar.show()
             self.position_elements()  # Ensure elements are positioned
             # Show timeline slots that have entries
             self.update_timeline_display()
 
         else:
-            self.rage_icon.hide()
             self.rage_bar.hide()
             self.tracker_icon.hide()
             self.tracker_counter.hide()
-            # Hide all tracker bars when not Iop's turn
-            for bar in self.tracker_bars:
-                bar.hide()
             # Target fade out for tracker icon, but keep processing fade animation below (no early return)
-            self.prey_target_alpha = 0.0
+            self.tracker_target_alpha = 0.0
             # Hide timeline when not Iop's turn
             for i in range(self.timeline_max_slots):
                 self.timeline_icon_labels[i].hide()
                 self.timeline_cost_labels[i].hide()
         
         # Direct value updates for responsive display
-        self.current_rage = self.rage
+        self.current_rage = self.rage_value
         self.current_tracker = self.tracker
-        self.current_tracker = self.tracker
-        self.current_prey = self.prey
         
         # Update rage bar with smooth transitions
-        if self.rage != self.rage_bar.target_value:
+        if self.rage_value != self.rage_bar.target_value:
             self.rage_bar.setValue(self.current_rage)
-        
         # Progress bar has its own high-frequency timer, no need to update here
-        
-        # Update tracker bars (show bars based on tracker level) - only when overlay is visible
-        if self.overlay_visible and self.in_combat:
-            bars_to_show = min(5, self.current_tracker // 10)  # Each bar represents 10 tracker
-            if bars_to_show > 0:
-                # Only print debug message when state changes
-                if bars_to_show != self.last_tracker_bars_state:
-                    print(f"DEBUG: tracker bars showing - tracker: {self.current_tracker}, bars: {bars_to_show}, overlay_visible: {self.overlay_visible}, in_combat: {self.in_combat}")
-                    self.last_tracker_bars_state = bars_to_show
-                # Reset hidden debug flag when bars become visible
-                self.last_tracker_hidden_debug = False
-            for i, bar in enumerate(self.tracker_bars):
-                if i < bars_to_show:
-                    bar.show()
-                    # Light up the bar with a bright color
-                    bar.setStyleSheet("""
-                        QFrame {
-                            background-color: rgba(100, 200, 255, 200);
-                            border: 1px solid rgba(150, 220, 255, 255);
-                            border-radius: 3px;
-                        }
-                    """)
-                else:
-                    bar.hide()
-        else:
-            # Hide all tracker bars when overlay is not visible
-            if self.current_tracker > 0 and not self.last_tracker_hidden_debug:
-                print(f"DEBUG: tracker bars hidden despite having tracker - overlay_visible: {self.overlay_visible}, in_combat: {self.in_combat}")
-                self.last_tracker_hidden_debug = True
-            for bar in self.tracker_bars:
-                bar.hide()
-            # Reset state tracking when hidden
-            self.last_tracker_bars_state = 0
-        
+        """
         # Update tracker display - only show if we have stacks AND overlay is visible
         if self.current_tracker > 0 and self.overlay_visible and self.in_combat:
             self.tracker_icon.show()
@@ -1340,49 +1107,45 @@ class WakfuOugiResourceTracker(QMainWindow):
             self.tracker_counter.move(tracker_x, tracker_y)  # Counter follows the icon
         else:
             self.tracker_icon.hide()
-            self.tracker_counter.hide()
             if self.current_tracker > 0 and not self.last_tracker_hidden_debug:
                 print(f"DEBUG: tracker hidden despite having stacks - overlay_visible: {self.overlay_visible}, in_combat: {self.in_combat}")
                 self.last_tracker_hidden_debug = True
             # Reset state tracking when hidden
             self.last_tracker_state = 0
-        
-        # Update rage display - always show if we have stacks (regardless of turn state)
-        if self.current_rage > 0 and self.in_combat:
-            self.rage_icon.show()
-            self.rage_counter.setText(str(int(self.current_rage)))
-            self.rage_counter.show()
-            # Only print debug message when state changes
-            if self.current_rage != self.last_rage_state:
-                print(f"DEBUG: Préparation showing - stacks: {self.current_rage}, overlay_visible: {self.overlay_visible}, in_combat: {self.in_combat}")
-                self.last_rage_state = self.current_rage
-            # Reset hidden debug flag when rage becomes visible
-            self.last_rage_hidden_debug = False
-            
-            # Apply slide animation for rage icon (initial slide down)
-            if self.rage_slide_offset > 0:
-                # Gradually reduce slide offset (slide down effect)
-                self.rage_slide_offset -= self.rage_slide_speed
-                if self.rage_slide_offset < 0:
-                    self.rage_slide_offset = 0
-            
-            # Apply slide offset to rage icon position
-            base_x, base_y = self.rage_bar.pos().x(), self.rage_bar.pos().y()
-            rage_x = int(base_x + 290 + self.rage_offset_x)
-            rage_y = int(base_y - 2 + self.rage_offset_y - self.rage_slide_offset + self.rage_bounce_offset)  # Slide + bounce offset
-            
-            # Move both icon and counter together
-            self.rage_icon.move(rage_x, rage_y)
-            self.rage_counter.move(rage_x, rage_y)  # Counter follows the icon
+        """
+
+        # === Gestion de l'affichage du tracker (icône + valeur) ===
+        if self.rage_bar.isVisible():
+            # Rendre visibles icône et compteur
+            self.tracker_icon.show()
+            self.tracker_counter.setText(str(int(self.current_tracker)))
+            self.tracker_counter.show()
+
+            # --- Positionner le bloc tracker à droite de la barre ---
+            base_x = self.rage_bar.x()
+            base_y = self.rage_bar.y()
+            bar_width = self.rage_bar.width()
+            bar_height = self.rage_bar.height()
+
+            # Position du bloc global (icône + valeur)
+            block_x = base_x + bar_width + 10  # 10 px à droite de la barre
+            block_y = base_y + (bar_height // 2) - (self.tracker_icon.height() // 2)
+
+            # Déplacer l'icône du tracker
+            self.tracker_icon.move(block_x, block_y)
+
+            # Centrer la valeur sous l’icône
+            counter_x = block_x + (self.tracker_icon.width() - self.tracker_counter.width()) // 2
+            counter_y = block_y + self.tracker_icon.height() - 2
+            self.tracker_counter.move(counter_x, counter_y)
+
         else:
-            self.rage_icon.hide()
-            self.rage_counter.hide()
-            if self.current_rage > 0 and not self.in_combat and not self.last_rage_hidden_debug:
-                print(f"DEBUG: Préparation hidden due to combat end - stacks: {self.current_rage}")
-                self.last_rage_hidden_debug = True
-            # Reset state tracking when hidden
-            self.last_rage_state = 0
-        
+            # Si la barre est invisible → tout cacher
+            self.tracker_icon.hide()
+            self.tracker_counter.hide()
+
+
+                    
         # Apply bounce animation for rage icon (continuous loop) - ALWAYS runs when rage exists
         if self.current_rage > 0 and self.rage_bounce_loop_active:
             # Only print debug occasionally to avoid spam
@@ -1426,64 +1189,20 @@ class WakfuOugiResourceTracker(QMainWindow):
                 self.trigger_rage_bounce()
             
             # Bounce offset is now applied in the rage display logic above to avoid duplicate positioning
-        
-        # Update tracker icon with fade animation (only during Iop's turn)
-        if self.current_prey and self.overlay_visible and self.in_combat:
-            # Set target alpha to 1.0 for fade in (only when it's Iop's turn)
-            self.prey_target_alpha = 1.0
-            self.prey_icon.show()
-            if not self.prey_visible:
-                print("DEBUG: Égaré icon showing (fade in)")
-                self.prey_visible = True
-                # Initialize slide-in from above
-                self.prey_slide_offset = self.prey_slide_max
-                # Start fade from 0 to make animation visible
-                self.prey_fade_alpha = 0.0
             
             # Position tracker icon well above the first Tracker bar
             base_x, base_y = self.rage_bar.pos().x(), self.rage_bar.pos().y()
-            prey_x = base_x  # Same X position as first combo bar
-            prey_y = base_y - 50  # Much higher up above the combo bars
-            self.prey_icon.move(prey_x, prey_y)
-        elif not self.current_prey:
+            tracker_x = base_x  # Same X position as first combo bar
+            tracker_y = base_y - 50  # Much higher up above the combo bars
+            self.tracker_icon.move(tracker_x, tracker_y)
+        elif not self.current_tracker:
             # Set target alpha to 0.0 for fade out (when tracker is lost)
-            self.prey_target_alpha = 0.0
+            self.tracker_target_alpha = 0.0
         elif not self.overlay_visible:
             # Set target alpha to 0.0 for fade out when not Iop's turn
-            self.prey_target_alpha = 0.0
+            self.tracker_target_alpha = 0.0
         
-        # Update fade animation (always process, regardless of combat status)
-        if self.prey_fade_alpha < self.prey_target_alpha:
-            # Fade in
-            self.prey_fade_alpha += self.prey_fade_in_speed
-            if self.prey_fade_alpha > self.prey_target_alpha:
-                self.prey_fade_alpha = self.prey_target_alpha
-        elif self.prey_fade_alpha > self.prey_target_alpha:
-            # Fade out
-            self.prey_fade_alpha -= self.prey_fade_out_speed
-            if self.prey_fade_alpha < self.prey_target_alpha:
-                self.prey_fade_alpha = self.prey_target_alpha
-        
-        # Update slide-in offset while fading in
-        if self.prey_target_alpha > 0.0 and self.prey_fade_alpha > 0.0 and self.prey_slide_offset > 0:
-            self.prey_slide_offset = max(0, self.prey_slide_offset - self.prey_slide_speed)
 
-        # Reposition tracker icon after updating slide offset and fade
-        base_x, base_y = self.rage_bar.pos().x(), self.rage_bar.pos().y()
-        prey_x = base_x
-        prey_y = base_y - 50 - self.prey_slide_offset
-        self.prey_icon.move(prey_x, prey_y)
-
-        # Apply fade alpha to icon (always process, regardless of combat status)
-        self.prey_icon.setFadeAlpha(self.prey_fade_alpha)
-        
-        # Hide icon when fully faded out (always process, regardless of combat status)
-        if self.prey_fade_alpha <= 0.0:
-            self.prey_icon.hide()
-            if self.prey_visible:
-                print("DEBUG: Égaré icon hidden (fully faded out)")
-                self.prey_visible = False
-                self.prey_slide_offset = 0
 
         # Animate timeline: increase alpha/slide for newest, fade/slide out overflow if present in buffer
         if self.timeline_entries:
@@ -1509,7 +1228,7 @@ class WakfuOugiResourceTracker(QMainWindow):
     def add_spell_to_timeline(self, spell_name: str):
         """Add a spell cast to the timeline (tracked player only)."""
         spell_key = spell_name.strip()
-        cost = self.spell_cost_map.get(spell_key)
+        cost = self.ougi_spells[spell_key]
         icon_stem = self.spell_icon_stem_map.get(spell_key)
         if not cost or not icon_stem:
             return  # Unknown spell; ignore
@@ -1664,7 +1383,7 @@ class WakfuOugiResourceTracker(QMainWindow):
             pass  # Silently handle load errors
     
     def mousePressEvent(self, event):
-        """Handle mouse press for dragging rage bar or combo columns separately"""
+        """Handle mouse press for dragging tracker bar or combo columns separately"""
         if event.button() == Qt.MouseButton.LeftButton and not self.positions_locked:
             click_pos = event.globalPosition().toPoint()
             
@@ -1676,18 +1395,6 @@ class WakfuOugiResourceTracker(QMainWindow):
 
                 print("DEBUG: Started dragging rage bar")
                 return
-            
-            # Check if click is on rage icon
-            if self.rage_icon.isVisible():
-                rage_rect = self.rage_icon.geometry()
-                if rage_rect.contains(click_pos):
-                    # Calculate offset from rage bar for rage
-                    rage_base_x = self.rage_bar.x() + 290 + self.rage_offset_x
-                    rage_base_y = self.rage_bar.y() - 2 + self.rage_offset_y
-                    self.drag_start_position = click_pos - QPoint(rage_base_x, rage_base_y)
-                    self.dragging_rage = False
-                    print("DEBUG: Started dragging rage icon")
-                    return
     
     def mouseMoveEvent(self, event):
         """Handle mouse move for dragging rage bar or tracker separately"""
