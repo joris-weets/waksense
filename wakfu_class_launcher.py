@@ -145,7 +145,11 @@ class LogMonitorThread(QThread):
 
         # Ougi spells
         ougi_spells = [
+<<<<<<< HEAD
             "Emeute", "Fléau", "Rupture", "Plombage", "Balafre", # Water spells
+=======
+            "Émeute", "Fléau", "Rupture", "Plombage", "Balafre", # Water spells
+>>>>>>> 040b95079528bbc4a86ed3f4129f9292c7b5b2eb
             "Croc-en-jambe", "Bastonnade", "Molosse", "Hachure", "Saccade", # Earth spells
             "Balayage", "Contusion", "Cador",  "Brise'Os", "Baroud", # Wind spells
             "Chasseur", "Élan", "Canine", "Apaisement", "Poursuite", "Meute", # Neutral spells
@@ -157,6 +161,10 @@ class LogMonitorThread(QThread):
         elif spell_name.lower() in (s.lower() for s in cra_spells):
             return "Cra"
         elif spell_name.lower() in (s.lower() for s in ougi_spells):
+<<<<<<< HEAD
+=======
+            print(f"\nDEBUG: Ougi spell {spell_name} detected\n")
+>>>>>>> 040b95079528bbc4a86ed3f4129f9292c7b5b2eb
             return "Ougi"
 
         return None
