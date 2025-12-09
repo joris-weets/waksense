@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Wakfu Class Launcher - Main Application
-Detects Cra, Ougi and Iop players in combat and provides a menu to launch appropriate trackers
+Detects Cra and Iop players in combat and provides a menu to launch appropriate trackers
 """
 
 import sys
@@ -142,23 +142,12 @@ class LogMonitorThread(QThread):
             "Balise d'alignement", "Balise de contact", "Tir précis", "Débalisage", "Eclaireur",
             "Flèche lumineuse", "Pluie de flèches", "Roulade"
         ]
-
-        # Ougi spells
-        ougi_spells = [
-            "Emeute", "Fléau", "Rupture", "Plombage", "Balafre", # Water spells
-            "Croc-en-jambe", "Bastonnade", "Molosse", "Hachure", "Saccade", # Earth spells
-            "Balayage", "Contusion", "Cador",  "Brise'Os", "Baroud", # Wind spells
-            "Chasseur", "Élan", "Canine", "Apaisement", "Poursuite", "Meute", # Neutral spells
-            "Proie", "Ougigarou", "Chienchien", "Poursuivant" # Innate spells
-        ]
-
-        if spell_name.lower() in (s.lower() for s in iop_spells):
+        
+        if any(iop_spell in spell_name for iop_spell in iop_spells):
             return "Iop"
-        elif spell_name.lower() in (s.lower() for s in cra_spells):
+        elif any(cra_spell in spell_name for cra_spell in cra_spells):
             return "Cra"
-        elif spell_name.lower() in (s.lower() for s in ougi_spells):
-            return "Ougi"
-
+        
         return None
     
     def stop_monitoring(self):
@@ -345,8 +334,6 @@ class DetectionOverlay(QWidget):
                 icon_file = icon_path / "iopicon.png"
             elif class_name == "Cra":
                 icon_file = icon_path / "craicon.png"
-            elif class_name == "Ougi":
-                icon_file = icon_path / "ougiicon.png"
             else:
                 icon_file = None
             
@@ -363,8 +350,6 @@ class DetectionOverlay(QWidget):
                     icon_label.setText("⚔")
                 elif class_name == "Cra":
                     icon_label.setText("🏹")
-                elif class_name == "Ougi":
-                    icon_label.setText("🐶")
                 icon_label.setStyleSheet("font-size: 16px; color: #ffffff;")
             
             # Create name label - responsive container sans background noir
@@ -396,19 +381,6 @@ class DetectionOverlay(QWidget):
                         background-color: rgba(74, 158, 255, 0.4);
                         border-radius: 6px;
                         border: 1px solid rgba(74, 158, 255, 0.6);
-                    }
-                """)
-            elif class_name == "Ougi":
-                name_label.setStyleSheet("""
-                    QLabel {
-                        font-size: 11px;
-                        color: #ffffff;
-                        font-weight: bold;
-                        font-family: 'Segoe UI', Arial, sans-serif;
-                        padding: 3px 8px;
-                        background-color: rgba(255, 215, 0, 0.4);
-                        border-radius: 6px;
-                        border: 1px solid rgba(255, 215, 0, 0.6);
                     }
                 """)
             
@@ -481,20 +453,6 @@ class DetectionOverlay(QWidget):
                         background-color: rgba(74, 158, 255, 0.2);
                     }
                 """)
-            elif class_name == "Ougi":
-                button.setStyleSheet("""
-                    QPushButton {
-                        background-color: transparent;
-                        border: none;
-                        padding: 0px;
-                    }
-                    QPushButton:hover {
-                        background-color: rgba(255, 215, 0, 0.1);
-                    }
-                    QPushButton:pressed {
-                        background-color: rgba(255, 215, 0, 0.2);
-                    }
-                """)
             
             # Connect click to main window's class button
             button.clicked.connect(lambda checked, cn=class_name, pn=player_name: self.launch_tracker(cn, pn))
@@ -560,19 +518,6 @@ class DetectionOverlay(QWidget):
                                             border: 2px solid rgba(74, 158, 255, 1.0);
                                         }
                                     """)
-                                elif class_name == "Ougi":
-                                    widget.name_label.setStyleSheet("""
-                                        QLabel {
-                                            font-size: 11px;
-                                            color: #ffffff;
-                                            font-weight: bold;
-                                            font-family: 'Segoe UI', Arial, sans-serif;
-                                            padding: 3px 8px;
-                                            background-color: rgba(74, 158, 255, 1.0);
-                                            border-radius: 6px;
-                                            border: 2px solid rgba(74, 158, 255, 1.0);
-                                        }
-                                    """)
                             else:
                                 # Inactive state - more transparent
                                 if class_name == "Iop":
@@ -589,19 +534,6 @@ class DetectionOverlay(QWidget):
                                         }
                                     """)
                                 elif class_name == "Cra":
-                                    widget.name_label.setStyleSheet("""
-                                        QLabel {
-                                            font-size: 11px;
-                                            color: #ffffff;
-                                            font-weight: bold;
-                                            font-family: 'Segoe UI', Arial, sans-serif;
-                                            padding: 3px 8px;
-                                            background-color: rgba(74, 158, 255, 0.4);
-                                            border-radius: 6px;
-                                            border: 1px solid rgba(74, 158, 255, 0.6);
-                                        }
-                                    """)
-                                elif class_name == "Ougi":
                                     widget.name_label.setStyleSheet("""
                                         QLabel {
                                             font-size: 11px;
@@ -684,8 +616,6 @@ class ClassButton(QPushButton):
             icon_file = icon_path / "iopicon.png"
         elif self.class_name == "Cra":
             icon_file = icon_path / "craicon.png"
-        elif self.class_name == "Ougi":
-            icon_file = icon_path / "ougiicon.png"
         else:
             icon_file = None
         
@@ -742,26 +672,6 @@ class ClassButton(QPushButton):
                     background-color: rgba(74, 158, 255, 0.35);
                 }
             """)
-        elif self.class_name == "Ougi":
-            self.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(255, 215, 0, 0.15);
-                    color: #ffd700;
-                    font-size: 11px;
-                    font-weight: 500;
-                    border: 1px solid rgba(255, 215, 0, 0.4);
-                    border-radius: 6px;
-                    padding: 4px 8px;
-                    text-align: left;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 215, 0, 0.25);
-                    border: 1px solid rgba(255, 215, 0, 0.6);
-                }
-                QPushButton:pressed {
-                    background-color: rgba(255, 215, 0, 0.35);
-                }
-            """)
         
         # Connect click event
         self.clicked.connect(self.toggle_tracker)
@@ -792,9 +702,6 @@ class ClassButton(QPushButton):
                 elif self.class_name == "Cra":
                     # Launch Waksense.exe with --cra argument
                     self.tracker_process = subprocess.Popen([sys.executable, "--cra"])
-                elif self.class_name == "Ougi":
-                    # Launch Waksense.exe with --ougi argument
-                    self.tracker_process = subprocess.Popen([sys.executable, "--ougi"])
                 else:
                     return
             else:
@@ -803,8 +710,6 @@ class ClassButton(QPushButton):
                     script_path = Path("Iop/wakfu_iop_resource_tracker.py")
                 elif self.class_name == "Cra":
                     script_path = Path("Cra/wakfu_resource_tracker_fullscreen.py")
-                elif self.class_name == "Ougi":
-                    script_path = Path("Ougi/wakfu_ougi_resource_tracker.py")
                 else:
                     return
                 
@@ -896,47 +801,6 @@ class ClassButton(QPushButton):
                     }
                 """)
         elif self.class_name == "Cra":
-            if self.is_active:
-                self.setStyleSheet("""
-                    QPushButton {
-                        background-color: rgba(74, 158, 255, 0.3);
-                        color: #4a9eff;
-                        font-size: 11px;
-                        font-weight: 600;
-                        border: 2px solid rgba(74, 158, 255, 0.8);
-                        border-radius: 6px;
-                        padding: 4px 8px;
-                        text-align: left;
-                    }
-                    QPushButton:hover {
-                        background-color: rgba(74, 158, 255, 0.4);
-                        border: 2px solid rgba(74, 158, 255, 1.0);
-                    }
-                    QPushButton:pressed {
-                        background-color: rgba(74, 158, 255, 0.5);
-                    }
-                """)
-            else:
-                self.setStyleSheet("""
-                    QPushButton {
-                        background-color: rgba(74, 158, 255, 0.15);
-                        color: #4a9eff;
-                        font-size: 11px;
-                        font-weight: 500;
-                        border: 1px solid rgba(74, 158, 255, 0.4);
-                        border-radius: 6px;
-                        padding: 4px 8px;
-                        text-align: left;
-                    }
-                    QPushButton:hover {
-                        background-color: rgba(74, 158, 255, 0.25);
-                        border: 1px solid rgba(74, 158, 255, 0.6);
-                    }
-                    QPushButton:pressed {
-                        background-color: rgba(74, 158, 255, 0.35);
-                    }
-                """)
-        elif self.class_name == "Ougi":
             if self.is_active:
                 self.setStyleSheet("""
                     QPushButton {
@@ -1336,47 +1200,6 @@ class WakfuClassLauncher(QMainWindow):
         columns_layout.addWidget(cra_scroll)
         
         layout.addLayout(columns_layout)
-
-        # ougi scrollable area
-        ougi_scroll = QScrollArea()
-        ougi_scroll.setWidgetResizable(True)
-        ougi_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        ougi_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        ougi_scroll.setStyleSheet("""
-            QScrollArea {
-                background-color: transparent;
-                border: none;
-            }
-            QScrollBar:vertical {
-                background-color: rgba(255, 255, 255, 0.1);
-                width: 8px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: rgba(255, 255, 255, 0.3);
-                border-radius: 4px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: rgba(255, 255, 255, 0.5);
-            }
-        """)
-        
-        # ougi buttons container (no background)
-        self.ougi_buttons_container = QWidget()
-        self.ougi_buttons_container.setStyleSheet("""
-            QWidget {
-                background-color: transparent;
-            }
-        """)
-        self.ougi_buttons_layout = QVBoxLayout(self.ougi_buttons_container)
-        self.ougi_buttons_layout.setSpacing(3)  # Small spacing between buttons
-        self.ougi_buttons_layout.setContentsMargins(5, 5, 5, 5)  # Small margins
-        
-        ougi_scroll.setWidget(self.ougi_buttons_container)
-        ougi_scroll.setMinimumSize(180, 150)  # Responsive minimum size
-        ougi_scroll.setMaximumWidth(220)  # Maximum width constraint
-        columns_layout.addWidget(ougi_scroll)
         
         # Add stretch to push everything to top
         layout.addStretch()
@@ -1570,8 +1393,6 @@ class WakfuClassLauncher(QMainWindow):
                     self.iop_buttons_container.hide()
                 if hasattr(self, 'cra_buttons_container'):
                     self.cra_buttons_container.hide()
-                if hasattr(self, 'ougi_buttons_container'):
-                    self.ougi_buttons_container.hide()
                 
         except Exception as e:
             print(f"DEBUG: Error checking path configuration: {e}")
@@ -1737,8 +1558,6 @@ class WakfuClassLauncher(QMainWindow):
             self.iop_buttons_container.show()
         if hasattr(self, 'cra_buttons_container'):
             self.cra_buttons_container.show()
-        if hasattr(self, 'ougi_buttons_container'):
-            self.ougi_buttons_container.show()
         
         # Load and show saved characters
         self.load_saved_characters()
@@ -1898,10 +1717,7 @@ class WakfuClassLauncher(QMainWindow):
             elif class_name == "Cra":
                 self.cra_buttons_layout.addWidget(container)
                 self.cra_buttons_container.show()  # Ensure container is visible
-            elif class_name == "Ougi":
-                self.ougi_buttons_layout.addWidget(container)
-                self.ougi_buttons_container.show()  # Ensure container is visible
-
+            
             # Add to detection overlay
             self.detection_overlay.add_detected_class(class_name, player_name)
             
@@ -1998,8 +1814,6 @@ class WakfuClassLauncher(QMainWindow):
                         self.iop_buttons_layout.addWidget(container)
                     elif class_name == "Cra":
                         self.cra_buttons_layout.addWidget(container)
-                    elif class_name == "Ougi":
-                        self.ougi_buttons_layout.addWidget(container)
                         
                     print(f"DEBUG: Personnage sauvegardé chargé {player_name} ({class_name})")
                 
@@ -2110,13 +1924,7 @@ class WakfuClassLauncher(QMainWindow):
             child = self.cra_buttons_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
-
-        # Clear OUGI buttons
-        while self.ougi_buttons_layout.count():
-            child = self.ougi_buttons_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-
+        
         # Clear button references
         self.class_buttons.clear()
     
@@ -2153,11 +1961,6 @@ def main():
             # Launch CRA tracker directly
             from Cra.wakfu_resource_tracker_fullscreen import main as cra_main
             cra_main()
-            return
-        elif "--Ougi" in sys.argv:
-            # Launch OUGI tracker directly
-            from Ougi.wakfu_ougi_resource_tracker import main as ougi_main
-            ougi_main()
             return
     
     # Normal launcher mode
